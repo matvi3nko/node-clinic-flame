@@ -29,6 +29,7 @@ class DataTree {
   update (initial) {
     if (!initial) this.setStackTop(this.activeTree())
     this.sortFramesByHottest()
+    this.computeGroupedSortValues()
     this.updateHighestStackTop()
   }
 
@@ -95,28 +96,55 @@ class DataTree {
     }
   }
 
-  getFilteredStackSorter () {
-    const exclude = this.exclude
+  computeGroupedSortValues () {
+    this.groupedSortValues = new Map()
 
-    function getValue (node) {
-      if (exclude.has(node.type)) {
-        // Value of hidden frames is the sum of their visible children
-        return node.children ? node.children.reduce((acc, child) => {
-          return acc + getValue(child)
-        }, 0) : 0
-      }
+    const walk = (node) => {
+      if (!node.children) return
+      const group = Object.create(null)
+      node.children.forEach((child) => {
+        const value = this.getSortValue(child)
+        if (child.type in group) {
+          group[child.type] += value
+        } else {
+          group[child.type] = value
+        }
+      })
 
-      // d3-fg sets `value` to 0 to hide off-screen nodes.
-      // there's no other property to indicate this but the original value is stored on `.original`.
-      if (node.value === 0 && typeof node.original === 'number') {
-        return node.original
-      }
-      return node.value
+      node.children.forEach((child) => {
+        this.groupedSortValues.set(child, group[child.type])
+        walk(child)
+      })
     }
 
+    walk(this.activeTree())
+  }
+
+  getSortValue (node) {
+    if (this.exclude.has(node.type)) {
+      // Value of hidden frames is the sum of their visible children
+      return node.children ? node.children.reduce((acc, child) => {
+        return acc + this.getSortValue(child)
+      }, 0) : 0
+    }
+
+    // d3-fg sets `value` to 0 to hide off-screen nodes.
+    // there's no other property to indicate this but the original value is stored on `.original`.
+    if (node.value === 0 && typeof node.original === 'number') {
+      return node.original
+    }
+    return node.value
+  }
+
+  getFilteredStackSorter () {
     return (nodeA, nodeB) => {
-      const valueA = getValue(nodeA)
-      const valueB = getValue(nodeB)
+      const groupA = this.groupedSortValues.get(nodeA)
+      const groupB = this.groupedSortValues.get(nodeB)
+      if (groupA > groupB) return -1
+      if (groupA < groupB) return 1
+
+      const valueA = this.getSortValue(nodeA)
+      const valueB = this.getSortValue(nodeB)
 
       return valueA === valueB ? 0 : valueA > valueB ? -1 : 1
     }
