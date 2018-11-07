@@ -357,10 +357,6 @@ class FlameGraph extends HtmlContent {
     const { toHide, toShow } = this.ui.changedExclusions
     let isChanged = false
 
-    if (toHide.size + toShow.size > 0) {
-      this.ui.dataTree.computeGroupedSortValues()
-    }
-
     if (toHide.size > 0) {
       toHide.forEach((name) => {
         this.flameGraph.typeHide(name)
