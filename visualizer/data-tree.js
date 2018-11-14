@@ -133,7 +133,10 @@ class DataTree {
   }
 
   getSortValue (node) {
-    if (this.exclude.has(node.type)) {
+    // TODO the `has(category)` check is for "deps" and "app".
+    // the `has(type)` check is for all the core types.
+    // this should be updated when the typeTEMP stuff is addressed and/or when more fine grained filters are implemented.
+    if (this.exclude.has(node.category) || this.exclude.has(node.type)) {
       // Value of hidden frames is the sum of their visible children
       return node.children ? node.children.reduce((acc, child) => {
         return acc + this.getSortValue(child)
