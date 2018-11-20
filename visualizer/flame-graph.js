@@ -3,12 +3,9 @@
 // d3-fg is likely a temporary dep, most layout logic will move to analysis and
 // most draw / interactivity logic will be replaced here
 const d3Fg = require('d3-fg')
-const flameGradient = require('flame-gradient')
 const HtmlContent = require('./html-content.js')
 
 const FgTooltipContainer = require('./flame-graph-tooltip-container')
-const Message = require('./message.js')
-const copy = require('copy-to-clipboard')
 const getLabelRenderer = require('./flame-graph-label.js')
 const getFrameRenderer = require('./flame-graph-frame.js')
 
@@ -25,13 +22,16 @@ class FlameGraph extends HtmlContent {
     super(parentContent, contentProperties)
 
     this.zoomFactor = contentProperties.zoomFactor
+    this.zoomFactorChanged = true
 
     this.hoveredNodeData = null
     this.isAnimating = false
     this.baseCellHeight = 20
     this.cellHeight = this.baseCellHeight + this.zoomFactor
+    this.sizeChanged = false
 
     this.tooltip = contentProperties.customTooltip
+    this.tooltipHtmlContent = contentProperties.tooltipHtmlContent
     this.showOptimizationStatus = contentProperties.showOptimizationStatus
 
     this.labelFont = contentProperties.labelFont
@@ -96,16 +96,7 @@ class FlameGraph extends HtmlContent {
     if (this.tooltip) {
       this.tooltip = new FgTooltipContainer({
         tooltip: this.tooltip,
-        onCopyPath: (path) => {
-          Message.info(`
-              <span>Path copied to the clipboard!</span>
-              <pre>${path}</pre>
-            `, 4000)
-          copy(path)
-        },
-        onOpenPath: (url) => {
-          window.open(url, '_blank')
-        }
+        tooltipHtmlContent: this.tooltipHtmlContent
       })
     }
 
@@ -149,10 +140,7 @@ class FlameGraph extends HtmlContent {
       height: undefined, // we need to improve the way the canvas height gets calculated in d3-fg
       renderTooltip: this.tooltip && null, // disabling the built-in tooltip if another tooltip is defined
       colorHash: (stackTop, { d, decimalAdjust, allSamples, tiers }) => {
-        // 0 = lowest unadjusted value, 1 = highest, can be <0 or >1 due to decimalAdjust
-        const decimal = (d.onStackTop.asViewed / this.ui.dataTree.highestStackTop) * (decimalAdjust || 1)
-        const rgb = flameGradient(decimal)
-        return rgb
+        return this.ui.dataTree.getHeatColor(d)
       },
       clickHandler: null,
       renderLabel: getLabelRenderer(this),
@@ -250,6 +238,10 @@ class FlameGraph extends HtmlContent {
     this.resize(this.zoomFactor)
   }
 
+  getNodeRect (node) {
+    return this.flameGraph.getNodeRect(node)
+  }
+
   highlightHoveredNodeOnGraph () {
     if (this.hoveredNodeData === null) {
       this.d3Highlighter.classed('show', false)
@@ -319,9 +311,14 @@ class FlameGraph extends HtmlContent {
   }
 
   resize (zoomFactor = 0) {
+    this.zoomFactorChanged = this.zoomFactor !== zoomFactor
     this.zoomFactor = zoomFactor
-    this.width = this.d3Chart.node().clientWidth
-    this.cellHeight = this.baseCellHeight + zoomFactor
+
+    const width = this.d3Chart.node().clientWidth
+    const cellHeight = this.baseCellHeight + zoomFactor
+    this.sizeChanged = this.width !== width || this.cellHeight !== cellHeight
+    this.width = width
+    this.cellHeight = cellHeight
     this.draw()
     this.updateMarkerBoxes()
   }
@@ -339,8 +336,11 @@ class FlameGraph extends HtmlContent {
     super.draw()
 
     const { dataTree } = this.ui
-    this.flameGraph.width(this.width)
-    this.flameGraph.cellHeight(this.cellHeight)
+    if (this.sizeChanged) {
+      this.flameGraph.width(this.width)
+      this.flameGraph.cellHeight(this.cellHeight)
+      this.sizeChanged = false
+    }
 
     let redrawGraph = false
 
@@ -370,6 +370,11 @@ class FlameGraph extends HtmlContent {
         redrawGraph = false
       })
       isChanged = true
+    }
+
+    if (this.zoomFactorChanged) {
+      redrawGraph = true
+      this.zoomFactorChanged = false
     }
 
     if (isChanged || redrawGraph) this.updateMarkerBoxes()
