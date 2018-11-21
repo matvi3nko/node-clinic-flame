@@ -168,8 +168,7 @@ class DataTree {
   }
 
   isOffScreen (node) {
-    // d3-fg sets `value` to 0 to hide off-screen nodes.
-    // there's no other property to indicate this but the original value is stored on `.original`.
+    // d3-fg sets `.value` to 0 to hide off-screen nodes, and keeps the real value at `.original`.
     return node.value === 0 && typeof node.original === 'number'
   }
 
